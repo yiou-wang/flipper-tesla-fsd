@@ -6,15 +6,16 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/widget.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/variable_item_list.h>
 
 #include "libraries/mcp_can_2515.h"
 #include "fsd_logic/fsd_handler.h"
 
-#define TESLA_FSD_VERSION "1.0.0"
+#define TESLA_FSD_VERSION "2.0.0"
 
-// Scene IDs
 typedef enum {
     TeslaFSDSceneMainMenu,
+    TeslaFSDSceneSettings,
     TeslaFSDSceneHWDetect,
     TeslaFSDSceneHWSelect,
     TeslaFSDSceneRunning,
@@ -22,13 +23,12 @@ typedef enum {
     TeslaFSDSceneCount,
 } TeslaFSDScene;
 
-// View IDs
 typedef enum {
     TeslaFSDViewSubmenu,
     TeslaFSDViewWidget,
+    TeslaFSDViewVarItemList,
 } TeslaFSDView;
 
-// Custom events
 typedef enum {
     TeslaFSDEventHWDetected,
     TeslaFSDEventHWNotFound,
@@ -37,30 +37,31 @@ typedef enum {
     TeslaFSDEventSelectHW4,
 } TeslaFSDEvent;
 
-// Worker thread flags
 typedef enum {
     WorkerFlagStop = (1 << 0),
 } WorkerFlag;
 
 typedef struct {
-    // Flipper GUI
     Gui* gui;
     SceneManager* scene_manager;
     ViewDispatcher* view_dispatcher;
     Widget* widget;
     Submenu* submenu;
+    VariableItemList* var_item_list;
 
-    // CAN hardware
     MCP2515* mcp_can;
     CANFRAME can_frame;
 
-    // Worker thread
     FuriThread* worker_thread;
     FuriMutex* mutex;
 
-    // FSD state (protected by mutex)
     TeslaHWVersion hw_version;
     FSDState fsd_state;
+
+    // feature toggles (set in settings, copied to fsd_state at start)
+    bool force_fsd;
+    bool suppress_speed_chime;
+    bool emergency_vehicle_detect;
 } TeslaFSDApp;
 
 TeslaFSDApp* tesla_fsd_app_alloc(void);

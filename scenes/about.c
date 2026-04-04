@@ -10,14 +10,13 @@ void tesla_fsd_scene_about_on_enter(void* context) {
         "Tesla FSD Unlock");
 
     widget_add_string_element(
-        app->widget, 64, 16, AlignCenter, AlignTop, FontSecondary,
+        app->widget, 64, 14, AlignCenter, AlignTop, FontSecondary,
         "v" TESLA_FSD_VERSION);
 
     widget_add_string_multiline_element(
-        app->widget, 64, 30, AlignCenter, AlignTop, FontSecondary,
-        "Unlocks FSD on HW3/HW4\n"
-        "via CAN bus injection.\n"
-        "Requires CAN Add-On.\n"
+        app->widget, 64, 28, AlignCenter, AlignTop, FontSecondary,
+        "HW3/HW4/Legacy + Force FSD\n"
+        "Chime suppress, Emerg. detect\n"
         "github.com/hypery11/flipper-tesla-fsd");
 
     view_dispatcher_switch_to_view(app->view_dispatcher, TeslaFSDViewWidget);

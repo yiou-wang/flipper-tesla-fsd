@@ -20,19 +20,29 @@ Unlock Tesla FSD on your Flipper Zero. No subscription, no computer, just plug i
 ## Features
 
 - Auto-detect HW3/HW4 from `GTW_carConfig` (`0x398`), or force manually
-- FSD unlock via bit manipulation on `UI_autopilotControl` (`0x3FD`)
+- **Legacy mode** for HW1/HW2 (Model S/X 2016-2019)
+- FSD unlock via bit manipulation on `UI_autopilotControl` (`0x3FD` / `0x3EE`)
 - Nag suppression (hands-on-wheel reminder)
 - Speed profile defaults to fastest, syncs from follow-distance stalk
 - Live status on Flipper screen
+
+### Settings (runtime toggles)
+
+| Setting | Description |
+|---------|-------------|
+| **Force FSD** | Enable FSD without "Traffic Light and Stop Sign Control" toggle — for regions where this option doesn't exist |
+| **Suppress Chime** | Kill the ISA speed warning chime (HW4 only, CAN ID `0x399`) |
+| **Emerg. Vehicle** | Enable emergency vehicle detection flag (HW4 only, bit59) |
 
 ### HW Support
 
 | Tesla HW | Bits Modified | Speed Profile |
 |----------|---------------|---------------|
+| Legacy (HW1/HW2) | bit46 | 3 levels (0-2) |
 | HW3 | bit46 | 3 levels (0-2) |
 | HW4 (FSD V14+) | bit46 + bit60, bit47 | 5 levels (0-4) |
 
-HW4 vehicles on firmware **before 2026.2.3** should use HW3 mode. See [Compatibility](#compatibility).
+> **Firmware warning:** 2026.2.9.x and 2026.8.6 — FSD is **not working on HW4**. Use HW3 mode on these versions even if your car has HW4 hardware. See [Compatibility](#compatibility).
 
 ---
 
@@ -47,7 +57,7 @@ HW4 vehicles on firmware **before 2026.2.3** should use HW3 mode. See [Compatibi
 ### Wiring
 
 <p align="center">
-  <img src="assets/wiring_diagram.png" alt="Wiring Diagram" width="700">
+  <img src="images/wiring_diagram.png" alt="Wiring Diagram" width="700">
 </p>
 
 > **Important:** Cut or disable the 120-ohm termination resistor on the CAN Add-On. The vehicle's CAN bus already has its own termination — adding a second one causes communication errors.
@@ -114,8 +124,9 @@ FSD activates when **"Traffic Light and Stop Sign Control"** is enabled in your 
 |---------|-----------|----------|------|--------|
 | Model 3/Y (2019-2023) | HW3 | Any | HW3 | Supported |
 | Model 3/Y (2023+) | HW4 | < 2026.2.3 | **HW3** | Supported |
-| Model 3/Y (2023+) | HW4 | >= 2026.2.3 | HW4 | Supported |
-| Model S/X (2021+) | HW4 | >= 2026.2.3 | HW4 | Supported |
+| Model 3/Y (2023+) | HW4 | >= 2026.2.3 (excl. 2026.2.9.x, 2026.8.6) | HW4 | Supported |
+| Model 3/Y (2023+) | HW4 | 2026.2.9.x or 2026.8.6 | **HW3** | Use HW3 mode |
+| Model S/X (2021+) | HW4 | >= 2026.2.3 (excl. 2026.2.9.x, 2026.8.6) | HW4 | Supported |
 | Model S/X (2016-2019) | HW1/HW2 | Any | Legacy | **Looking for testers** |
 
 ### HW1/HW2 Legacy Support — Volunteers Needed

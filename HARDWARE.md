@@ -4,11 +4,12 @@
 
 | Option | Cost | Connection | CAN buses | WiFi | Best for |
 |--------|------|------------|-----------|------|----------|
-| **Any ESP32 + MCP2515 → X179** | **~$6 + wire** | X179 4-wire | 1 (bus 6 = mixed) | Yes | Cheapest full-feature setup |
-| M5Stack ATOM Lite + ATOMIC CAN → X179 | ~$20 | X179 4-wire | 1 (bus 6) | Yes | Plug & play, no soldering |
-| **LILYGO T-2CAN ESP32-S3** → X179 | **~$33** | X179 4-wire (+ spare CAN2) | **2 independent** | Yes | Future-proof, dual-CAN ready |
-| Flipper Zero + Electronic Cats CAN Add-On → OBD-II | ~$210 | OBD-II plug | 1 (Party CAN) | No | If you already own a Flipper |
-| Flipper Zero + generic MCP2515 → OBD-II | ~$175 | OBD-II wire | 1 (Party CAN) | No | Budget Flipper option |
+| **Any ESP32 + MCP2515 → X179** | **~$5-7** | X179 4-wire | 1 (bus 6 = mixed) | Yes | Cheapest full-feature setup |
+| M5Stack ATOM Lite + ATOMIC CAN → X179 | ~$13-15 | X179 4-wire | 1 (bus 6) | Yes | Plug & play, no soldering |
+| **LILYGO T-2CAN ESP32-S3** → X179 | **~$24** | X179 4-wire (+ spare CAN2) | **2 independent** | Yes | Future-proof, dual-CAN ready |
+| Waveshare ESP32-S3-RS485-CAN → X179 | ~$18 | X179 4-wire | 1 (TWAI) | Yes | All-in-one board |
+| Flipper Zero + Electronic Cats CAN Add-On → OBD-II | ~$234 | OBD-II plug | 1 (Party CAN) | No | If you already own a Flipper |
+| Flipper Zero + generic MCP2515 → OBD-II | ~$202-205 | OBD-II wire | 1 (Party CAN) | No | Budget Flipper option |
 
 ---
 
@@ -129,10 +130,10 @@ Any ESP32 dev board + any MCP2515 CAN module from Aliexpress.
 
 | Component | Price |
 |-----------|-------|
-| ESP32-DevKitC or ESP32-C3-SuperMini | ~$3 |
-| MCP2515 CAN module (TJA1050 transceiver) | ~$2 |
-| X179 pigtail cable (4-wire) | ~$3 |
-| **Total** | **~$8** |
+| ESP32-C3-SuperMini or ESP32-DevKitC | ~$3-4 |
+| MCP2515 CAN module (TJA1050 transceiver) | ~$1.50-3 |
+| X179 pigtail cable (4-wire, or DIY from connector) | ~$3-5 |
+| **Total** | **~$8-12** |
 
 Wire: X179 CAN-H/CAN-L → MCP2515 module CAN-H/CAN-L. X179 12V → buck
 converter → ESP32 VIN. X179 GND → common GND.
@@ -144,10 +145,10 @@ Build with `pio run -e esp32-mcp2515`, adjust pin config in
 
 | Component | Price |
 |-----------|-------|
-| [M5Stack ATOM Lite](https://shop.m5stack.com/products/atom-lite-esp32-development-kit) | ~$10 |
-| [ATOMIC CAN Base (CA-IS3050G)](https://shop.m5stack.com/products/atomic-can-base) | ~$5 |
-| X179 pigtail cable (4-wire) | ~$3 |
-| **Total** | **~$18** |
+| [M5Stack ATOM Lite](https://shop.m5stack.com/products/atom-lite-esp32-development-kit) | ~$7.50 |
+| [ATOMIC CAN Base (CA-IS3050G)](https://shop.m5stack.com/products/atomic-can-base) | ~$5-7 |
+| X179 pigtail cable (4-wire) | ~$3-5 |
+| **Total** | **~$16-20** |
 
 ATOMIC CAN Base snaps onto the ATOM Lite. Solder X179 CAN-H/CAN-L to
 the screw terminals, 12V to VIN, GND to GND. Build: `pio run -e esp32-twai`.
@@ -156,9 +157,9 @@ the screw terminals, 12V to VIN, GND to GND. Build: `pio run -e esp32-twai`.
 
 | Component | Price |
 |-----------|-------|
-| [LILYGO T-2CAN ESP32-S3](https://lilygo.cc/products/t-2can) | ~$33 |
-| X179 pigtail cable (4-wire) | ~$3 |
-| **Total** | **~$36** |
+| [LILYGO T-2CAN ESP32-S3](https://lilygo.cc/products/t-2can) | ~$24 |
+| X179 pigtail cable (4-wire) | ~$3-5 |
+| **Total** | **~$27-29** |
 
 The T-2CAN has **dual isolated MCP2515 controllers**, dual screw
 terminals, 12–24V input, WiFi, BLE, QWIIC, and USB-C. Connect X179
@@ -175,10 +176,10 @@ the Electronic Cats CAN Bus Add-On or a generic MCP2515 module.
 
 | Component | Price |
 |-----------|-------|
-| [Flipper Zero](https://flipper.net/) | ~$170 |
-| [Electronic Cats CAN Bus Add-On](https://electroniccats.com/store/flipper-addon-canbus/) | ~$30 |
-| OBD-II pigtail cable | ~$10 |
-| **Total** | **~$210** |
+| [Flipper Zero](https://flipper.net/) | $199 |
+| [Electronic Cats CAN Bus Add-On](https://electroniccats.com/store/flipper-addon-canbus/) | $35 |
+| OBD-II pigtail cable | ~$5-10 |
+| **Total** | **~$239-244** |
 
 OBD-II wiring (Party CAN only):
 

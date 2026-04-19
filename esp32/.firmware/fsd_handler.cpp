@@ -87,9 +87,23 @@ TeslaHWVersion fsd_detect_hw_version(const CanFrame *frame) {
 
 void fsd_handle_gtw_car_state(FSDState *state, const CanFrame *frame) {
     if (frame->dlc < 7) return;
-    // GTW_updateInProgress: bits 1:0 of byte 6.  Any non-zero → OTA running.
-    uint8_t in_progress = (frame->data[6] >> 0) & 0x03;
-    state->tesla_ota_in_progress = (in_progress != 0);
+    // GTW_updateInProgress: bits 1:0 of byte 6.
+    // Filter transient / incompatible values to avoid false positives.
+    uint8_t raw = frame->data[6] & 0x03u;
+    state->ota_raw_state = raw;
+
+    bool in_progress = (raw == OTA_IN_PROGRESS_RAW_VALUE);
+    if (in_progress) {
+        if (state->ota_assert_count < 255u) state->ota_assert_count++;
+        state->ota_clear_count = 0;
+        if (state->ota_assert_count >= OTA_ASSERT_FRAMES)
+            state->tesla_ota_in_progress = true;
+    } else {
+        if (state->ota_clear_count < 255u) state->ota_clear_count++;
+        state->ota_assert_count = 0;
+        if (state->ota_clear_count >= OTA_CLEAR_FRAMES)
+            state->tesla_ota_in_progress = false;
+    }
 }
 
 // ── Follow distance → speed profile (DAS_followDistance 0x3F8) ───────────────

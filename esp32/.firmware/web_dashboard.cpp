@@ -27,7 +27,10 @@ static WebSocketsServer g_ws(81);
 static uint32_t g_start_ms    = 0;
 static uint32_t g_last_rx     = 0;
 static uint32_t g_last_fps_ms = 0;
+static uint32_t g_last_can_seen_ms = 0;
 static float    g_fps         = 0.0f;
+
+#define CAN_VEHICLE_ALIVE_MS 3000u
 
 // ── Embedded HTML/CSS/JS ──────────────────────────────────────────────────────
 // Tesla dark theme; mobile-first (max 480 px); WebSocket on :81
@@ -182,11 +185,23 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">NAG Killer</span>
     <span class="pill off" id="nagSt"><span class="pd"></span>--</span>
   </div>
+  <div class="row">
+    <span class="lbl">CAN Vehicle</span>
+    <span class="pill off" id="canVeh"><span class="pd"></span>--</span>
+  </div>
 </div>
 
 <!-- Battery -->
 <div class="card">
   <div class="card-head"><div class="icon ic-b">B</div><h2>Battery</h2></div>
+  <div class="row">
+    <span class="lbl">BMS Status</span>
+    <span class="pill off" id="bmsSt"><span class="pd"></span>Waiting Frames</span>
+  </div>
+  <div class="row">
+    <span class="lbl">BMS Frames</span>
+    <span id="bmsFrames" style="font-size:.8em;color:var(--text2)">HV:0 SOC:0 TH:0</span>
+  </div>
   <div class="hero">
     <div class="soc-ring">
       <svg viewBox="0 0 120 120" width="120" height="120">
@@ -287,6 +302,9 @@ function upd(d){
   hwEl.innerHTML='<span class="pd"></span>'+(HW[d.hw_version]||'?');
 
   pill('nagSt', d.nag_killer, d.nag_killer?'ON':'OFF');
+  pill('canVeh', d.can_vehicle_detected, d.can_vehicle_detected?'Detected':'No CAN Traffic');
+  pill('bmsSt', d.bms && d.bms.seen, (d.bms && d.bms.seen)?'Live':'Waiting Frames');
+  document.getElementById('bmsFrames').textContent='HV:'+d.bms_hv_seen+' SOC:'+d.bms_soc_seen+' TH:'+d.bms_thermal_seen;
 
   // OTA banner
   document.getElementById('otaBanner').style.display=d.ota?'block':'none';
@@ -356,6 +374,10 @@ conn();
 // ── JSON builder ──────────────────────────────────────────────────────────────
 static String build_json() {
     uint32_t uptime_s = (millis() - g_start_ms) / 1000;
+  bool can_vehicle_detected = false;
+  if (g_state != nullptr && g_state->rx_count > 0) {
+    can_vehicle_detected = (millis() - g_last_can_seen_ms) <= CAN_VEHICLE_ALIVE_MS;
+  }
 
     // BMS sub-object
     char bms[128];
@@ -386,6 +408,10 @@ static String build_json() {
     j += "\"nag_killer\":";    j += g_state->nag_killer               ? "true" : "false"; j += ',';
     j += "\"bms_output\":";    j += g_state->bms_output               ? "true" : "false"; j += ',';
     j += "\"force_fsd\":";     j += g_state->force_fsd                ? "true" : "false"; j += ',';
+    j += "\"can_vehicle_detected\":"; j += can_vehicle_detected       ? "true" : "false"; j += ',';
+    j += "\"bms_hv_seen\":";   j += g_state->seen_bms_hv;              j += ',';
+    j += "\"bms_soc_seen\":";  j += g_state->seen_bms_soc;             j += ',';
+    j += "\"bms_thermal_seen\":"; j += g_state->seen_bms_thermal;       j += ',';
     j += "\"rx_count\":";      j += g_state->rx_count;                 j += ',';
     j += "\"tx_count\":";      j += g_state->frames_modified;          j += ',';
     j += "\"crc_errors\":";    j += g_state->crc_err_count;            j += ',';
@@ -456,6 +482,7 @@ void web_dashboard_init(FSDState *state, CanDriver *can) {
     g_start_ms    = millis();
     g_last_fps_ms = millis();
     g_last_rx     = state ? state->rx_count : 0;
+    g_last_can_seen_ms = (state && state->rx_count > 0) ? millis() : 0;
 
     g_http.on("/",           HTTP_GET, handle_root);
     g_http.on("/api/status", HTTP_GET, handle_status);
@@ -478,6 +505,7 @@ void web_dashboard_update() {
     if ((now - g_last_fps_ms) >= 1000u) {
         uint32_t rx = g_state->rx_count;
         float    dt = (now - g_last_fps_ms) / 1000.0f;
+      if (rx != g_last_rx) g_last_can_seen_ms = now;
         g_fps        = (float)(rx - g_last_rx) / dt;
         g_last_rx    = rx;
         g_last_fps_ms = now;

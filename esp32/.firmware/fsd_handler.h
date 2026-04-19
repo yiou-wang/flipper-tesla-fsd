@@ -46,8 +46,17 @@ struct FSDState {
     // ── Mode + diagnostics ────────────────────────────────────────────────────
     OpMode         op_mode;
     bool           tesla_ota_in_progress;   // pause TX during OTA
+    uint8_t        ota_raw_state;           // raw GTW_updateInProgress bits [1:0]
+    uint8_t        ota_assert_count;        // consecutive "in-progress" samples
+    uint8_t        ota_clear_count;         // consecutive "not in-progress" samples
     uint32_t       crc_err_count;           // CAN bus error counter
     uint32_t       rx_count;                // total frames seen (wiring check)
+    uint32_t       seen_gtw_car_state;      // 0x318 seen count
+    uint32_t       seen_gtw_car_config;     // 0x398 seen count
+    uint32_t       seen_ap_control;         // 0x3FD seen count
+    uint32_t       seen_bms_hv;             // 0x132 seen count
+    uint32_t       seen_bms_soc;            // 0x292 seen count
+    uint32_t       seen_bms_thermal;        // 0x312 seen count
 
     // ── BMS read-only sniff ───────────────────────────────────────────────────
     bool           bms_output;       // print BMS data to serial

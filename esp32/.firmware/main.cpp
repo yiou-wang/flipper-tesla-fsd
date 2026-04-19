@@ -26,6 +26,28 @@
 static CanDriver *g_can   = nullptr;
 static FSDState   g_state = {};
 
+static void apply_detected_hw(TeslaHWVersion hw, const char *reason) {
+    if (hw == TeslaHW_Unknown || g_state.hw_version == hw) return;
+
+    bool old_nag    = g_state.nag_killer;
+    bool old_chime  = g_state.suppress_speed_chime;
+    bool old_bms    = g_state.bms_output;
+    bool old_force  = g_state.force_fsd;
+    OpMode old_mode = g_state.op_mode;
+
+    fsd_state_init(&g_state, hw);
+    g_state.nag_killer           = old_nag;
+    g_state.suppress_speed_chime = old_chime;
+    g_state.bms_output           = old_bms;
+    g_state.force_fsd            = old_force;
+    g_state.op_mode              = old_mode;
+
+    const char *hw_str =
+        (hw == TeslaHW_HW4) ? "HW4" :
+        (hw == TeslaHW_HW3) ? "HW3" : "Legacy";
+    Serial.printf("[HW] Auto-detected: %s (%s)\n", hw_str, reason);
+}
+
 // ── Button state machine ──────────────────────────────────────────────────────
 static uint32_t g_btn_down_ms     = 0;
 static uint32_t g_last_release_ms = 0;
@@ -108,6 +130,13 @@ static void update_led() {
 static void process_frame(const CanFrame &frame) {
     g_state.rx_count++;
 
+    if (frame.id == CAN_ID_GTW_CAR_STATE)  g_state.seen_gtw_car_state++;
+    if (frame.id == CAN_ID_GTW_CAR_CONFIG) g_state.seen_gtw_car_config++;
+    if (frame.id == CAN_ID_AP_CONTROL)     g_state.seen_ap_control++;
+    if (frame.id == CAN_ID_BMS_HV_BUS)     g_state.seen_bms_hv++;
+    if (frame.id == CAN_ID_BMS_SOC)        g_state.seen_bms_soc++;
+    if (frame.id == CAN_ID_BMS_THERMAL)    g_state.seen_bms_thermal++;
+
     // DLC sanity: skip zero-length frames
     if (frame.dlc == 0) return;
 
@@ -116,23 +145,8 @@ static void process_frame(const CanFrame &frame) {
     // we can print it if a new frame arrives.
     if (frame.id == CAN_ID_GTW_CAR_CONFIG) {
         TeslaHWVersion hw = fsd_detect_hw_version(&frame);
-        if (hw != TeslaHW_Unknown && g_state.hw_version == TeslaHW_Unknown) {
-            g_state.hw_version = hw;
-            // Re-initialise defaults for detected HW
-            bool old_nag   = g_state.nag_killer;
-            bool old_chime = g_state.suppress_speed_chime;
-            bool old_bms   = g_state.bms_output;
-            OpMode old_mode = g_state.op_mode;
-            fsd_state_init(&g_state, hw);
-            g_state.nag_killer           = old_nag;
-            g_state.suppress_speed_chime = old_chime;
-            g_state.bms_output           = old_bms;
-            g_state.op_mode              = old_mode;
-            const char *hw_str =
-                (hw == TeslaHW_HW4) ? "HW4" :
-                (hw == TeslaHW_HW3) ? "HW3" : "Legacy";
-            Serial.printf("[HW] Auto-detected: %s\n", hw_str);
-        }
+        if (hw != TeslaHW_Unknown && g_state.hw_version == TeslaHW_Unknown)
+            apply_detected_hw(hw, "0x398");
         return;
     }
 
@@ -141,9 +155,9 @@ static void process_frame(const CanFrame &frame) {
         bool was_ota = g_state.tesla_ota_in_progress;
         fsd_handle_gtw_car_state(&g_state, &frame);
         if (!was_ota && g_state.tesla_ota_in_progress)
-            Serial.println("[OTA] Update in progress — TX suspended");
+            Serial.printf("[OTA] Update in progress (raw=%u) - TX suspended\n", g_state.ota_raw_state);
         else if (was_ota && !g_state.tesla_ota_in_progress)
-            Serial.println("[OTA] Update finished — TX resumed");
+            Serial.printf("[OTA] Update finished (raw=%u) - TX resumed\n", g_state.ota_raw_state);
         return;
     }
 
@@ -175,6 +189,18 @@ static void process_frame(const CanFrame &frame) {
         if (fsd_handle_legacy_autopilot(&g_state, &f) && tx)
             g_can->send(f);
         return;
+    }
+
+    // Fallback HW detection when 0x398 is unavailable on the tapped bus.
+    if (g_state.hw_version == TeslaHW_Unknown) {
+        if (frame.id == CAN_ID_AP_LEGACY) {
+            apply_detected_hw(TeslaHW_Legacy, "fallback:0x3EE");
+        } else if (frame.id == CAN_ID_ISA_SPEED) {
+            apply_detected_hw(TeslaHW_HW4, "fallback:0x399");
+        } else if (frame.id == CAN_ID_AP_CONTROL) {
+            // 0x3FD exists on HW3/HW4. Prefer HW3 as safe default until 0x399 appears.
+            apply_detected_hw(TeslaHW_HW3, "fallback:0x3FD");
+        }
     }
 
     // ISA speed chime (0x399, HW4 only)

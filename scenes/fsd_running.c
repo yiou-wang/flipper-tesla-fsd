@@ -289,12 +289,18 @@ static int32_t fsd_running_worker(void* context) {
                         send_can_frame(mcp, &frame);
                     }
                 }
+                else if(frame.canId == CAN_ID_ENERGY_CONS) {
+                    fsd_handle_energy_consumption(&state, &frame);
+                }
                 else if(frame.canId == CAN_ID_GTW_CONFIG_ETH) {
                     fsd_handle_gtw_autopilot_tier(&state, &frame);
                     if(shield_enabled) {
                         if(fsd_handle_gtw_shield(&state, &frame) && tx_allowed) {
                             send_can_frame(mcp, &frame);
                         }
+                    }
+                    if(fsd_handle_gtw_tier_override(&state, &frame) && tx_allowed) {
+                        send_can_frame(mcp, &frame);
                     }
                 }
 
@@ -355,6 +361,9 @@ static int32_t fsd_running_worker(void* context) {
                     }
                 } else if(frame.canId == CAN_ID_FOLLOW_DIST) {
                     fsd_handle_follow_distance(&state, &frame);
+                    if(fsd_handle_driver_assist_override(&state, &frame) && tx_allowed) {
+                        send_can_frame(mcp, &frame);
+                    }
                 } else if(frame.canId == CAN_ID_AP_CONTROL) {
                     if(fsd_handle_autopilot_frame(&state, &frame) && tx_allowed) {
                         send_can_frame(mcp, &frame);

@@ -40,6 +40,8 @@
 #define CAN_ID_STEER_ANGLE   0x129  // 297  - SCCM_steeringAngleSensor (steering angle — Party CAN)
 #define CAN_ID_DAS_STEER     0x488  // 1160 - DAS_steeringControl (DAS steering request — Party CAN)
 #define CAN_ID_APS_EACMON    0x27D  // 637  - APS_eacMonitor (steering permission — Party CAN)
+#define CAN_ID_ENERGY_CONS   0x33A  // 826  - UI_ratedConsumption (energy Wh/km — Party CAN)
+#define CAN_ID_DRIVER_ASSIST 0x3F8  // 1016 - UI_driverAssistControl (also follow distance — Party CAN)
 
 typedef enum {
     TeslaHW_Unknown = 0,
@@ -161,6 +163,23 @@ typedef struct {
     bool tlssc_restore;          // read-modify-retransmit 0x331 to set tier=SELF_DRIVING
     uint32_t tlssc_restore_count; // frames modified
 
+    // --- 0x7FF active tier override (force SELF_DRIVING) ---
+    bool gtw_tier_override;      // actively write tier=3 on every 0x7FF mux=2
+
+    // --- 0x3F8 driver assist overrides (FUCKYOU-TESLA feature parity) ---
+    bool assist_nav_enable;      // bit13 + bit48 + bit49: nav-based FSD routing
+    bool assist_hands_off;       // bit14: UI-level hands-on disable
+    bool assist_dev_mode;        // bit5: UI_dasDeveloper flag
+    bool assist_lhd_override;    // bit40-41: force left-hand drive
+
+    // --- 0x3FD mux1 extras ---
+    bool assist_show_lane_graph; // bit45: lane visualization on non-FSD tier
+    bool assist_tlssc_bit38;     // bit38 on mux0: explicit TLSSC enable (complementary to 0x331)
+
+    // --- energy consumption (0x33A, read-only) ---
+    float energy_wh_per_km;
+    bool energy_seen;
+
     // --- extras: write toggles (BETA, Service mode only) ---
     bool extra_hazard_lights;
     bool extra_wiper_off;
@@ -281,6 +300,19 @@ void fsd_handle_gtw_autopilot_tier(FSDState* state, const CANFRAME* frame);
  *  modified (caller should retransmit the modified frame to override
  *  the Gateway's banned version). */
 bool fsd_handle_gtw_shield(FSDState* state, CANFRAME* frame);
+
+/** Modify 0x7FF mux=2 to force GTW_autopilot tier=SELF_DRIVING (3).
+ *  More aggressive than shield — actively writes tier instead of freezing.
+ *  Returns true if frame was modified. */
+bool fsd_handle_gtw_tier_override(FSDState* state, CANFRAME* frame);
+
+/** Modify 0x3F8 UI_driverAssistControl with region/nav/hands-off overrides.
+ *  Bits: 5 (devMode), 13+48+49 (nav FSD), 14 (handsOff), 40-41 (drivingSide).
+ *  Returns true if frame was modified (caller should retransmit). */
+bool fsd_handle_driver_assist_override(FSDState* state, CANFRAME* frame);
+
+/** Parse 0x33A UI_ratedConsumption — energy Wh/km. */
+void fsd_handle_energy_consumption(FSDState* state, const CANFRAME* frame);
 
 /** Modify UI_trackModeSettings (0x313) to set track mode ON.
  *  byte[0] bits 1:0 = 0x01 (kTrackModeRequestOn) + recalc checksum byte[7].

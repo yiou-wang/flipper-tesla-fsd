@@ -18,6 +18,8 @@
 #include <WebSocketsServer.h>
 #include <WiFi.h>
 #include <Arduino.h>
+#include <Update.h>
+#include <esp_ota_ops.h>
 
 // ── Module state ──────────────────────────────────────────────────────────────
 static FSDState  *g_state = nullptr;   // shared with main
@@ -149,6 +151,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   left:3px;bottom:3px;background:#555;border-radius:50%;transition:.3s}
 input:checked+.sl2{background:var(--accent)}
 input:checked+.sl2:before{transform:translateX(20px);background:#fff}
+
+/* ── OTA firmware update ── */
+.ota-file{display:none}.ota-progress{display:none;margin-top:12px}
+.ota-track{background:var(--card2);border-radius:8px;height:10px;overflow:hidden}
+.ota-bar{background:var(--accent);height:100%;width:0%;transition:width .2s}
+.ota-status{text-align:center;margin-top:8px;font-size:.85em;color:var(--text2)}
+.ota-bytes{text-align:center;margin-top:4px;font-size:.72em;color:var(--text3)}
+.ota-info{margin-top:10px;padding:10px 12px;background:rgba(77,171,247,.07);
+  border-radius:8px;border:1px solid rgba(77,171,247,.15);font-size:.72em;color:var(--text3);line-height:1.4}
+.btn-blue{background:rgba(77,171,247,.14);color:var(--blue);border:1px solid rgba(77,171,247,.3)}
+.btn-yellow{background:rgba(255,217,61,.14);color:var(--yellow);border:1px solid rgba(255,217,61,.3)}
 
 /* ── Footer ── */
 .foot{text-align:center;padding:16px 0 0;font-size:.64em;color:var(--text3)}
@@ -283,6 +296,29 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
   <button class="btn-main btn-stop" onclick="saveWifi()" style="margin-top:12px">SAVE & RESTART WIFI</button>
 </div>
 
+<!-- OTA Update -->
+<div class="card">
+  <div class="card-head"><div class="icon ic-c">U</div><h2>OTA Firmware Update</h2></div>
+  <div style="font-size:.75em;color:var(--text3);margin-bottom:12px;line-height:1.5">
+    Upload a .bin firmware file. Device will reboot after a successful update.
+  </div>
+  <form id="otaForm" enctype="multipart/form-data" style="margin:0">
+    <input type="file" id="otaFile" class="ota-file" accept=".bin" onchange="uploadFirmware()">
+    <button type="button" class="btn-main btn-blue" id="otaSelectBtn" onclick="document.getElementById('otaFile').click()">
+      SELECT FIRMWARE (.bin)
+    </button>
+  </form>
+  <div id="otaProgress" class="ota-progress">
+    <div class="ota-track"><div id="otaBar" class="ota-bar"></div></div>
+    <div id="otaStatus" class="ota-status">Preparing...</div>
+    <div id="otaBytes" class="ota-bytes"></div>
+  </div>
+  <div id="otaRollbackInfo" class="ota-info">
+    <b style="color:var(--blue)">Partition Safety</b><br>
+    OTA writes to the next app partition when available. Keep USB reflashing available as a recovery path.
+  </div>
+</div>
+
 <!-- SD Card -->
 <div class="card">
   <div class="card-head"><div class="icon ic-d">S</div><h2>SD Card</h2></div>
@@ -309,6 +345,11 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">WiFi Clients</span>
     <span id="wifiCl">--</span>
   </div>
+  <div class="row">
+    <span class="lbl">OTA Partition</span>
+    <span id="otaPartInfo" style="font-size:.78em;color:var(--text2)">--</span>
+  </div>
+  <button class="btn-main btn-yellow" onclick="restartDevice()" style="margin-top:12px">RESTART DEVICE</button>
 </div>
 
 <div class="foot">Tesla FSD ESP32 &middot; M5Stack ATOM Lite + ATOMIC CAN Base</div>
@@ -412,6 +453,40 @@ function upd(d){
   if(document.getElementById('fwBuild')) document.getElementById('fwBuild').textContent=d.fw_build;
   if(document.getElementById('uptime')) document.getElementById('uptime').textContent=fmt(d.uptime_s||0);
   if(document.getElementById('wifiCl')) document.getElementById('wifiCl').textContent=d.wifi_clients||0;
+  var partEl=document.getElementById('otaPartInfo');
+  if(partEl && d.ota_partition){
+    var p=d.ota_partition;
+    var stateStr=(p.state===0)?'New':(p.state===1)?'Pending':(p.state===2)?'Valid':(p.state===3)?'Invalid':'State '+p.state;
+    partEl.textContent=p.running+' ('+stateStr+') - '+(p.has_ota?'OTA capable':'No OTA partition');
+    var info=document.getElementById('otaRollbackInfo');
+    if(info && !p.has_ota){
+      info.innerHTML='<b style="color:var(--red)">No OTA Partition</b><br>This build appears to be running from a factory/single app partition. Use an OTA partition table before relying on Web updates.';
+    }
+  }
+}
+
+function uploadFirmware(){
+  var input=document.getElementById('otaFile');
+  var file=input.files[0];
+  if(!file)return;
+  if(!file.name.endsWith('.bin')){alert('Error: Please select a .bin firmware file');input.value='';return;}
+  var MAX_SIZE=16*1024*1024;
+  if(file.size>MAX_SIZE){alert('Error: Firmware file too large (max 16MB)');input.value='';return;}
+  if(file.size<32768 && !confirm('Warning: This file is very small ('+Math.round(file.size/1024)+' KB).\nAre you sure it is a valid ESP32 firmware?')){input.value='';return;}
+  if(!confirm('Flash firmware: '+file.name+' ('+Math.round(file.size/1024)+' KB)?\n\nDevice will reboot after update.')){input.value='';return;}
+  var prog=document.getElementById('otaProgress'),bar=document.getElementById('otaBar'),status=document.getElementById('otaStatus'),bytes=document.getElementById('otaBytes'),btn=document.getElementById('otaSelectBtn');
+  prog.style.display='block';bar.style.width='0%';bar.style.background='var(--accent)';status.textContent='Uploading firmware...';status.style.color='var(--text2)';bytes.textContent='0 / '+Math.round(file.size/1024)+' KB';btn.disabled=true;btn.style.opacity='.5';
+  var xhr=new XMLHttpRequest();
+  xhr.upload.addEventListener('progress',function(e){if(e.lengthComputable){var pct=Math.round((e.loaded/e.total)*100);bar.style.width=pct+'%';status.textContent='Uploading: '+pct+'%';bytes.textContent=Math.round(e.loaded/1024)+' / '+Math.round(e.total/1024)+' KB';}});
+  xhr.addEventListener('load',function(){btn.disabled=false;btn.style.opacity='1';if(xhr.status===200&&xhr.responseText==='OK'){bar.style.width='100%';status.textContent='Upload complete - rebooting...';status.style.color='var(--accent)';var c=8;var t=setInterval(function(){c--;bytes.textContent='Reconnecting in '+c+'s...';if(c<=0){clearInterval(t);location.reload();}},1000);}else{bar.style.background='var(--red)';status.textContent='Update failed';status.style.color='var(--red)';bytes.textContent='Server response: '+(xhr.responseText||xhr.statusText||'Unknown error');input.value='';}});
+  xhr.addEventListener('error',function(){btn.disabled=false;btn.style.opacity='1';bar.style.background='var(--red)';status.textContent='Connection lost during upload';status.style.color='var(--red)';bytes.textContent='Check WiFi connection and try again';input.value='';});
+  xhr.addEventListener('timeout',function(){btn.disabled=false;btn.style.opacity='1';bar.style.background='var(--yellow)';status.textContent='Upload timed out';status.style.color='var(--yellow)';bytes.textContent='The device may have rebooted - check if new firmware is running';input.value='';});
+  var fd=new FormData();fd.append('firmware',file);xhr.open('POST','/update',true);xhr.timeout=120000;xhr.send(fd);
+}
+
+function restartDevice(){
+  if(!confirm('Restart the device now?'))return;
+  fetch('/restart').then(function(){setTimeout(function(){location.reload();},8000);}).catch(function(){setTimeout(function(){location.reload();},8000);});
 }
 
 function sdFormat(){
@@ -503,12 +578,26 @@ static String build_json() {
         strcpy(bms, "{\"seen\":false}");
     }
 
+    char ota_part[128] = {};
+    {
+        const esp_partition_t *running = esp_ota_get_running_partition();
+        const char *running_label = running ? running->label : "unknown";
+        esp_ota_img_states_t ota_state = ESP_OTA_IMG_UNDEFINED;
+        if (running) esp_ota_get_state_partition(running, &ota_state);
+        bool has_ota = (running &&
+            (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0 ||
+             running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_1));
+        snprintf(ota_part, sizeof(ota_part),
+            "{\"running\":\"%s\",\"state\":%d,\"has_ota\":%s}",
+            running_label, (int)ota_state, has_ota ? "true" : "false");
+    }
+
     // fps as fixed-point string
     char fps_s[12];
     snprintf(fps_s, sizeof(fps_s), "%.1f", g_fps);
 
     String j;
-    j.reserve(512);
+    j.reserve(768);
     j  = "{";
     j += "\"fsd_enabled\":";   j += g_state->fsd_enabled             ? "true" : "false"; j += ',';
     j += "\"op_mode\":";       j += (int)g_state->op_mode;            j += ',';
@@ -534,7 +623,8 @@ static String build_json() {
     j += "\"wifi_ssid\":\"";  j += json_escape(g_state->wifi_ssid);   j += "\",";
     j += "\"wifi_pass\":\"***\",";
     j += "\"wifi_hidden\":";  j += g_state->wifi_hidden               ? "true" : "false"; j += ',';
-    j += "\"wifi_clients\":";  j += (int)WiFi.softAPgetStationNum();
+    j += "\"wifi_clients\":";  j += (int)WiFi.softAPgetStationNum();   j += ',';
+    j += "\"ota_partition\":"; j += ota_part;
     j += '}';
     return j;
 }
@@ -680,6 +770,111 @@ static void handle_sdformat() {
     g_http.send(200, "application/json", result);
 }
 
+static void handle_restart() {
+    g_http.send(200, "text/plain", "OK");
+    delay(500);
+    ESP.restart();
+}
+
+// ── OTA Update handlers ───────────────────────────────────────────────────────
+static size_t ota_total_size = 0;
+static bool ota_error_flag = false;
+
+static void handle_ota_upload() {
+    HTTPUpload& upload = g_http.upload();
+
+    if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
+        ota_error_flag = false;
+        ota_total_size = 0;
+
+        if (!upload.filename.endsWith(".bin")) {
+            Serial.println("[OTA] ERROR: File must be .bin");
+            ota_error_flag = true;
+            return;
+        }
+
+        size_t max_size = UPDATE_SIZE_UNKNOWN;
+        const esp_partition_t* partition = esp_ota_get_next_update_partition(NULL);
+        if (partition != NULL) {
+            max_size = partition->size;
+            Serial.printf("[OTA] Target partition: %s, size: %u bytes\n",
+                partition->label, (unsigned)max_size);
+        }
+
+        if (!Update.begin(max_size, U_FLASH)) {
+            Update.printError(Serial);
+            Serial.println("[OTA] ERROR: Update.begin() failed");
+            ota_error_flag = true;
+            return;
+        }
+
+        Serial.println("[OTA] Update started successfully");
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (ota_error_flag) return;
+
+        size_t written = Update.write(upload.buf, upload.currentSize);
+        if (written != upload.currentSize) {
+            Update.printError(Serial);
+            Serial.printf("[OTA] ERROR: Write failed, expected %u, wrote %u\n",
+                upload.currentSize, (unsigned)written);
+            ota_error_flag = true;
+            return;
+        }
+
+        ota_total_size = upload.totalSize;
+        if (ota_total_size % 65536 == 0) {
+            Serial.printf("[OTA] Progress: %u bytes\n", (unsigned)ota_total_size);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (ota_error_flag) {
+            Serial.println("[OTA] Upload aborted due to previous error");
+            Update.abort();
+            return;
+        }
+
+        if (Update.end(true)) {
+            Serial.printf("[OTA] Success: %u bytes total\n", (unsigned)ota_total_size);
+            if (!Update.isFinished()) {
+                Serial.println("[OTA] ERROR: Update not finished properly");
+                ota_error_flag = true;
+            }
+        } else {
+            Update.printError(Serial);
+            Serial.println("[OTA] ERROR: Update.end() failed");
+            ota_error_flag = true;
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Serial.println("[OTA] Upload aborted by client");
+        Update.abort();
+        ota_error_flag = true;
+    }
+}
+
+static void handle_ota_done() {
+    if (ota_error_flag || Update.hasError()) {
+        String error_msg = "FAIL: ";
+        if (Update.hasError()) {
+            error_msg += "Error code " + String(Update.getError());
+        } else {
+            error_msg += "Upload error";
+        }
+
+        Serial.printf("[OTA] %s\n", error_msg.c_str());
+        g_http.send(500, "text/plain", error_msg);
+        Update.abort();
+        return;
+    }
+
+    g_http.send(200, "text/plain", "OK");
+
+    Serial.println("[OTA] Firmware update successful!");
+    Serial.println("[OTA] Rebooting in 2 seconds...");
+
+    delay(2000);
+    ESP.restart();
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 void web_dashboard_init(FSDState *state, CanDriver *can) {
     g_state       = state;
@@ -689,9 +884,11 @@ void web_dashboard_init(FSDState *state, CanDriver *can) {
     g_last_rx     = state ? state->rx_count : 0;
     g_last_can_seen_ms = (state && state->rx_count > 0) ? millis() : 0;
 
-    g_http.on("/",           HTTP_GET, handle_root);
-    g_http.on("/api/status", HTTP_GET, handle_status);
-    g_http.on("/sdformat",   HTTP_GET, handle_sdformat);
+    g_http.on("/",           HTTP_GET,  handle_root);
+    g_http.on("/api/status", HTTP_GET,  handle_status);
+    g_http.on("/sdformat",   HTTP_GET,  handle_sdformat);
+    g_http.on("/restart",    HTTP_GET,  handle_restart);
+    g_http.on("/update",     HTTP_POST, handle_ota_done, handle_ota_upload);
     g_http.begin();
 
     g_ws.begin();

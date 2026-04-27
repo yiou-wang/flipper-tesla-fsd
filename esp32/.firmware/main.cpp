@@ -16,6 +16,7 @@
 
 #include <Arduino.h>
 #include <esp_sleep.h>
+#include <esp_ota_ops.h>
 #include "config.h"
 #include "fsd_handler.h"
 #include "can_driver.h"
@@ -330,6 +331,26 @@ void setup() {
     Serial.println(" Tesla FSD Unlock — ESP32   ");
     Serial.println("============================");
     Serial.printf("[FSD] Build: %s %s\n", __DATE__, __TIME__);
+
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running) {
+        Serial.printf("[OTA] Running from: %s\n", running->label);
+
+        esp_ota_img_states_t ota_state;
+        if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+            if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+                Serial.println("[OTA] First boot after update - marking as valid...");
+                if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+                    Serial.println("[OTA] Firmware marked valid");
+                } else {
+                    Serial.println("[OTA] WARNING: Could not mark firmware valid");
+                }
+            } else if (ota_state == ESP_OTA_IMG_VALID) {
+                Serial.println("[OTA] Running verified firmware");
+            }
+        }
+    }
+
 #if defined(CAN_DRIVER_TWAI)
   #if defined(BOARD_WAVESHARE_S3)
     Serial.println("[CAN] Driver: ESP32-S3 TWAI (Waveshare ESP32-S3-RS485-CAN)");
